@@ -1,0 +1,13 @@
+[package]
+name = "clone-on-capture"
+version = "0.1.0"
+authors = ["Sarunas Gincas <sarunas.gincas@gmail.com>"]
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "1", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
