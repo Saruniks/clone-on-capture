@@ -45,5 +45,5 @@ fn foo() {
 }
 ```
 
-This will also clone varaibles that implement `Copy`, but it is not a problem as `.clone()` is just a explicit way do the same as `Copy`.
+This will also clone variables that implement `Copy`, but it is not a problem as `.clone()` is just an explicit way to do the same as `Copy`.
 https://doc.rust-lang.org/std/marker/trait.Copy.html#whats-the-difference-between-copy-and-clone
