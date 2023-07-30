@@ -10,9 +10,9 @@ Given this code snippet:
 fn foo() {
     let a = "a".to_string();
     let multiply_by_a = move || {
-        println!("{a:?}");
+        println!("{}, a");
     };
-    println!("{a:?}");
+    println!("{}, a");
 }
 ```
 
@@ -25,10 +25,10 @@ fn foo() {
     let multiply_by_a = {
         let a = a.clone();
         move || {
-            println!("{a:?}");
+            println!("{}, a");
         }
     };
-    println!("{a:?}");
+    println!("{}, a");
 }
 ```
 
@@ -39,11 +39,26 @@ Cloning can get tedious, `clone-on-capture` macro can automatically generate tha
 fn foo() {
     let a = "a".to_string();
     let multiply_by_a = move || {
-        println!("{a:?}");
+        println!("{}, a");
     };
-    println!("{a:?}");
+    println!("{}, a");
 }
 ```
 
 This will also clone variables that implement `Copy`, but it is not a problem as `.clone()` is just an explicit way to do the same as `Copy`.
 https://doc.rust-lang.org/std/marker/trait.Copy.html#whats-the-difference-between-copy-and-clone
+
+## Known contexts where this macro doesn't work
+
+Capturing arguments for `format!` like macros doesn't work: 
+
+```rust
+#[clone_on_capture]
+fn foo() {
+    let a = "a".to_string();
+    let multiply_by_a = move || {
+        println!("{a}");
+    };
+    println!("{a}");
+}
+```
