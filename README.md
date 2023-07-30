@@ -50,7 +50,7 @@ https://doc.rust-lang.org/std/marker/trait.Copy.html#whats-the-difference-betwee
 
 ## Known contexts where this macro doesn't work
 
-Capturing arguments for `format!` like macros doesn't work: 
+Capturing arguments in string-formatting macros doesn't work: 
 
 ```rust
 #[clone_on_capture]
