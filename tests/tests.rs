@@ -7,7 +7,7 @@ fn check_addresses() {
     let a_address = a.as_ptr();
 
     let closure = move || {
-        let b = &a;
+        let b = a;
         let b_address = b.as_ptr();
         assert_ne!(a_address, b_address);
     };
@@ -18,11 +18,11 @@ fn check_addresses() {
 #[test]
 #[clone_on_capture]
 fn do_not_clone_prefix() {
-    let dc_a: String = "a".to_string();
+    let dc_a = "a".to_string();
     let dc_a_address = dc_a.as_ptr();
 
     let closure = move || {
-        let b = &dc_a;
+        let b = dc_a;
         let b_address = b.as_ptr();
         assert_eq!(dc_a_address, b_address);
     };
@@ -63,7 +63,7 @@ fn method_expr() {
 
     let _vec: Vec<()> = arr
         .into_iter()
-        .map(|x: String| {
+        .map(|x| {
             let _a = move || x;
             let _b = x;
         })
