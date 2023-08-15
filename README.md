@@ -9,7 +9,7 @@ Given this code snippet:
 ```rust
 fn foo() {
     let a = "a".to_string();
-    let multiply_by_a = move || {
+    let _closure = move || {
         println!("{}, a");
     };
     println!("{}, a");
@@ -22,7 +22,7 @@ To fix it you can clone `a` in a temporary scope:
 ```rust
 fn foo() {
     let a = "a".to_string();
-    let multiply_by_a = {
+    let _closure = {
         let a = a.clone();
         move || {
             println!("{}, a");
@@ -38,7 +38,7 @@ Cloning can get tedious, `clone-on-capture` macro can automatically generate tha
 #[clone_on_capture]
 fn foo() {
     let a = "a".to_string();
-    let multiply_by_a = move || {
+    let _closure = move || {
         println!("{}, a");
     };
     println!("{}, a");
@@ -48,6 +48,26 @@ fn foo() {
 This will also clone variables that implement `Copy`, but it is not a problem as `.clone()` is just an explicit way to do the same as `Copy`.
 https://doc.rust-lang.org/std/marker/trait.Copy.html#whats-the-difference-between-copy-and-clone
 
+## Do not clone prefix
+
+Use `dc_` prefix to prevent variable from being cloned.
+
+```rust
+#[clone_on_capture]
+fn do_not_clone_prefix() {
+    let dc_a = "a".to_string();
+    let dc_a_address = dc_a.as_ptr();
+
+    let closure = move || {
+        let b = dc_a;
+        let b_address = b.as_ptr();
+        assert_eq!(dc_a_address, b_address);
+    };
+
+    closure();
+}
+```
+
 ## Known contexts where this macro doesn't work
 
 Capturing arguments in string-formatting macros doesn't work: 
@@ -56,7 +76,7 @@ Capturing arguments in string-formatting macros doesn't work:
 #[clone_on_capture]
 fn foo() {
     let a = "a".to_string();
-    let multiply_by_a = move || {
+    let _closure = move || {
         println!("{a}");
     };
     println!("{a}");
