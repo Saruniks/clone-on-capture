@@ -1,16 +1,15 @@
-use std::collections::HashSet;
-
 use proc_macro::Span;
 use proc_macro2::{TokenStream, TokenTree};
 use quote::ToTokens;
-use syn::spanned::Spanned;
+use std::collections::HashSet;
+use syn::punctuated::Punctuated;
 use syn::{
-    parse_str, Error, Expr, ExprArray, ExprAssign, ExprAssignOp, ExprAsync, ExprAwait, ExprBinary,
-    ExprBlock, ExprBox, ExprBreak, ExprCall, ExprCast, ExprClosure, ExprContinue, ExprField,
-    ExprForLoop, ExprGroup, ExprIf, ExprIndex, ExprLet, ExprLit, ExprLoop, ExprMacro, ExprMatch,
-    ExprMethodCall, ExprParen, ExprPath, ExprRange, ExprReference, ExprRepeat, ExprReturn,
-    ExprStruct, ExprTry, ExprTryBlock, ExprTuple, ExprType, ExprUnary, ExprUnsafe, ExprWhile,
-    ExprYield, Ident, Item, ItemFn, Member, NestedMeta, Pat, Result, Stmt,
+    parse_str, Error, Expr, ExprArray, ExprAssign, ExprAsync, ExprAwait, ExprBinary, ExprBlock,
+    ExprBreak, ExprCall, ExprCast, ExprClosure, ExprContinue, ExprField, ExprForLoop, ExprGroup,
+    ExprIf, ExprIndex, ExprLet, ExprLit, ExprLoop, ExprMacro, ExprMatch, ExprMethodCall, ExprParen,
+    ExprPath, ExprRange, ExprReference, ExprRepeat, ExprReturn, ExprStruct, ExprTry, ExprTryBlock,
+    ExprTuple, ExprUnary, ExprUnsafe, ExprWhile, ExprYield, Ident, Item, ItemFn, Member, Meta, Pat,
+    Result, Stmt, Token,
 };
 
 extern crate proc_macro;
@@ -121,18 +120,22 @@ impl Data {
     }
 }
 
-pub fn clone_on_capture_impl(args: Vec<NestedMeta>, mut input: ItemFn) -> Result<TokenStream> {
+pub fn clone_on_capture_impl(
+    args: Punctuated<Meta, Token![,]>,
+    mut input: ItemFn,
+) -> Result<TokenStream> {
     let mut debug = false;
 
     for arg in args {
         match arg {
-            NestedMeta::Meta(value) => {
-                let value = value.path().into_token_stream().to_string().to_lowercase();
+            Meta::Path(value) => {
+                let value = value.into_token_stream().to_string().to_lowercase();
                 if value == "debug" {
                     debug = true;
                 }
             }
-            NestedMeta::Lit(_) => {}
+            Meta::List(_) => {}
+            Meta::NameValue(_) => {}
         }
     }
 
@@ -154,8 +157,9 @@ pub fn clone_on_capture_impl(args: Vec<NestedMeta>, mut input: ItemFn) -> Result
 fn parse_generic_statement(data: &mut Data, stmt: Stmt) -> Result<Stmt> {
     match stmt {
         Stmt::Local(mut local) => {
-            if let Some((p, expr)) = local.init {
-                local.init = Some((p, Box::new(parse_generic_expression(data, *expr)?)));
+            if let Some(mut local_init) = local.init {
+                local_init.expr = Box::new(parse_generic_expression(data, *local_init.expr)?);
+                local.init = Some(local_init);
             }
 
             data.push_idents(&extract_pat(data, local.pat.clone())?);
@@ -178,8 +182,16 @@ fn parse_generic_statement(data: &mut Data, stmt: Stmt) -> Result<Stmt> {
             }
             _ => Ok(Stmt::Item(item)),
         },
-        Stmt::Expr(expr) => Ok(Stmt::Expr(parse_generic_expression(data, expr)?)),
-        Stmt::Semi(expr, semi) => Ok(Stmt::Semi(parse_generic_expression(data, expr)?, semi)),
+        Stmt::Expr(expr, semi) => Ok(Stmt::Expr(parse_generic_expression(data, expr)?, semi)),
+        Stmt::Macro(stmt_macro) => {
+            let tokens = stmt_macro.clone().mac.tokens;
+            for token in tokens {
+                if let Ok(ident) = syn::parse_str::<Ident>(&token.to_string()) {
+                    data.push_usage(ident)?;
+                }
+            }
+            Ok(Stmt::Macro(stmt_macro))
+        }
     }
 }
 
@@ -190,9 +202,6 @@ fn parse_generic_expression(data: &mut Data, expr: Expr) -> Result<Expr> {
         }
         Expr::Assign(expr_assign) => {
             return parse_assign_expression(data, expr_assign);
-        }
-        Expr::AssignOp(expr_assign_op) => {
-            return parse_assign_op_expression(data, expr_assign_op);
         }
         Expr::Async(expr_async) => {
             return parse_async_expression(data, expr_async);
@@ -205,9 +214,6 @@ fn parse_generic_expression(data: &mut Data, expr: Expr) -> Result<Expr> {
         }
         Expr::Block(expr_block) => {
             return parse_block_expression(data, expr_block);
-        }
-        Expr::Box(expr_box) => {
-            return parse_box_expression(data, expr_box);
         }
         Expr::Break(expr_break) => {
             return parse_break_expression(data, expr_break);
@@ -287,9 +293,6 @@ fn parse_generic_expression(data: &mut Data, expr: Expr) -> Result<Expr> {
         Expr::Tuple(expr_tuple) => {
             return parse_tuple_expression(data, expr_tuple);
         }
-        Expr::Type(expr_type) => {
-            return parse_type_expression(data, expr_type);
-        }
         Expr::Unary(expr_unary) => {
             return parse_unary_expression(data, expr_unary);
         }
@@ -344,14 +347,6 @@ fn parse_unary_expression(data: &mut Data, mut expr_unary: ExprUnary) -> Result<
     expr_unary.expr = Box::new(parse_generic_expression(data, *expr_unary.expr)?);
 
     Ok(Expr::Unary(expr_unary))
-}
-
-fn parse_type_expression(data: &mut Data, mut expr_type: ExprType) -> Result<Expr> {
-    token_stream!(data, expr_type);
-
-    expr_type.expr = Box::new(parse_generic_expression(data, *expr_type.expr)?);
-
-    Ok(Expr::Type(expr_type))
 }
 
 fn parse_try_block_expression(data: &mut Data, mut expr_try_block: ExprTryBlock) -> Result<Expr> {
@@ -409,12 +404,12 @@ fn parse_reference_expression(data: &mut Data, mut expr_reference: ExprReference
 fn parse_range_expression(data: &mut Data, mut expr_range: ExprRange) -> Result<Expr> {
     token_stream!(data, expr_range);
 
-    if let Some(expr) = expr_range.from {
-        expr_range.from = Some(Box::new(parse_generic_expression(data, *expr)?));
+    if let Some(expr) = expr_range.start {
+        expr_range.start = Some(Box::new(parse_generic_expression(data, *expr)?));
     }
 
-    if let Some(expr) = expr_range.to {
-        expr_range.to = Some(Box::new(parse_generic_expression(data, *expr)?));
+    if let Some(expr) = expr_range.end {
+        expr_range.end = Some(Box::new(parse_generic_expression(data, *expr)?));
     }
 
     Ok(Expr::Range(expr_range))
@@ -456,7 +451,7 @@ fn parse_index_expression(data: &mut Data, mut expr_index: ExprIndex) -> Result<
 fn parse_for_loop_expression(data: &mut Data, mut expr_for_loop: ExprForLoop) -> Result<Expr> {
     token_stream!(data, expr_for_loop);
 
-    data.push_idents(&extract_pat(data, expr_for_loop.pat.clone())?);
+    data.push_idents(&extract_pat(data, *expr_for_loop.pat.clone())?);
 
     expr_for_loop.expr = Box::new(parse_generic_expression(data, *expr_for_loop.expr)?);
 
@@ -481,14 +476,6 @@ fn parse_break_expression(data: &mut Data, mut expr_break: ExprBreak) -> Result<
     Ok(Expr::Break(expr_break))
 }
 
-fn parse_box_expression(data: &mut Data, mut expr_box: ExprBox) -> Result<Expr> {
-    token_stream!(data, expr_box);
-
-    expr_box.expr = Box::new(parse_generic_expression(data, *expr_box.expr)?);
-
-    Ok(Expr::Box(expr_box))
-}
-
 fn parse_binary_expression(data: &mut Data, mut expr_binary: ExprBinary) -> Result<Expr> {
     token_stream!(data, expr_binary);
 
@@ -504,15 +491,6 @@ fn parse_await_expression(data: &mut Data, mut expr_await: ExprAwait) -> Result<
     expr_await.base = Box::new(parse_generic_expression(data, *expr_await.base)?);
 
     Ok(Expr::Await(expr_await))
-}
-
-fn parse_assign_op_expression(data: &mut Data, mut expr_assign_op: ExprAssignOp) -> Result<Expr> {
-    token_stream!(data, expr_assign_op);
-
-    expr_assign_op.left = Box::new(parse_generic_expression(data, *expr_assign_op.left)?);
-    expr_assign_op.right = Box::new(parse_generic_expression(data, *expr_assign_op.right)?);
-
-    Ok(Expr::AssignOp(expr_assign_op))
 }
 
 fn parse_assign_expression(data: &mut Data, mut expr_assign: ExprAssign) -> Result<Expr> {
@@ -613,13 +591,13 @@ fn parse_path_expression(data: &mut Data, expr_path: ExprPath) -> Result<Expr> {
             if data.debug {
                 println!("expr_path: segment: {}", path.ident);
             }
-            data.push_usage(Ident::new(
-                path.into_token_stream().to_string().as_str(),
-                expr_path.span(),
-            ))?;
+            for token in path.into_token_stream() {
+                if let Ok(ident) = syn::parse_str::<Ident>(&token.to_string()) {
+                    data.push_usage(ident)?;
+                }
+            }
         }
     }
-
     Ok(Expr::Path(expr_path))
 }
 
@@ -808,7 +786,7 @@ fn extract_pat(data: &Data, pat: Pat) -> Result<HashSet<Ident>> {
         Pat::TupleStruct(pat_tuple_struct) => {
             token_stream!(data, pat_tuple_struct);
 
-            for pat in pat_tuple_struct.pat.elems {
+            for pat in pat_tuple_struct.elems {
                 result = result.union(&extract_pat(data, pat)?).cloned().collect();
             }
         }
@@ -840,7 +818,7 @@ fn extract_token_stream(stream: TokenStream) -> Result<HashSet<Ident>> {
 }
 
 fn cloned_idents_expression(idents: HashSet<Ident>, expr: Expr) -> Result<Expr> {
-    let mut clones = vec![];
+    let mut clones: Vec<String> = vec![];
 
     for ident in idents {
         clones.push(format!("let {ident} = {ident}.clone();"));
@@ -849,7 +827,7 @@ fn cloned_idents_expression(idents: HashSet<Ident>, expr: Expr) -> Result<Expr> 
     let mut parsed_expr_block =
         parse_str::<ExprBlock>(format!("{{ {} }}", clones.join(" ")).as_str())?;
 
-    parsed_expr_block.block.stmts.push(Stmt::Expr(expr));
+    parsed_expr_block.block.stmts.push(Stmt::Expr(expr, None));
 
     Ok(Expr::Block(parsed_expr_block))
 }
