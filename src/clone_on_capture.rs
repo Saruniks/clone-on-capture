@@ -653,6 +653,10 @@ fn parse_closure_expression(data: &mut Data, mut expr_closure: ExprClosure) -> R
 
     data.push_nested_block(expr_closure.capture.is_some());
 
+    for pat in &expr_closure.inputs {
+        data.push_idents(&extract_pat(data, pat.clone())?);
+    }
+
     expr_closure.body = Box::new(parse_generic_expression(data, *expr_closure.body)?);
 
     if let Some(nest_block) = data.pop_nested_block()? {
