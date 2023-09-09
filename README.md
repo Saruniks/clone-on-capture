@@ -68,7 +68,7 @@ fn do_not_clone_prefix() {
 }
 ```
 
-## Known contexts where this macro doesn't work
+## Known caveats
 
 Capturing arguments in string-formatting macros doesn't work: 
 
